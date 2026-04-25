@@ -23,6 +23,7 @@ exp_configuration = {
         'num_iterations': 300,
         'alpha': 0.01,           # Step size for embedding updates (sign gradient)
         'target_margin': 0.0,    # Margin term for target-vs-non-target objective
+        'change_push_weight': 0.0,  # Encourage movement from original embeddings
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.01,        # Perturbation scaling factor (Eq. 11)
@@ -75,6 +76,7 @@ exp_configuration = {
         'num_iterations': 400,
         'alpha': 0.03,
         'target_margin': 0.1,
+        'change_push_weight': 0.05,
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.05,
@@ -126,6 +128,7 @@ exp_configuration = {
         'num_iterations': 500,
         'alpha': 0.05,
         'target_margin': 0.15,
+        'change_push_weight': 0.1,
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.1,
@@ -177,6 +180,7 @@ exp_configuration = {
         'num_iterations': 450,
         'alpha': 0.04,
         'target_margin': 0.12,
+        'change_push_weight': 0.08,
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.08,
@@ -207,5 +211,57 @@ exp_configuration = {
         'seed': 42,
 
         'comment': 'Middle-ground tuned settings: stronger attack with controlled drift',
+    },
+
+    5: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── Attack iterations ────────────────────────────────────
+        'num_iterations': 500,
+        'alpha': 0.06,
+        'target_margin': 0.2,
+        'change_push_weight': 0.15,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.12,
+        'mix_prob': 0.35,
+        'mix_upper_bound_feature': 0.45,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [1, 2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Word projection ──────────────────────────────────────
+        'projection_freq': 140,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.03,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.65,
+        'max_word_change_ratio': 0.6,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Exploratory high-strength settings for improved targeted/transfer ASR',
     },
 }

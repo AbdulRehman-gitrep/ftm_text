@@ -69,6 +69,12 @@ def ftm_text_attack(
     # Get initial embeddings
     embedding_layer = surrogate.get_embedding_layer()
     embeddings = embedding_layer(input_ids).detach().clone()  # [1, seq, hidden]
+    original_embeddings = embeddings.detach().clone()
+
+    # Non-special token mask used by change-push regularization.
+    token_mask = torch.ones_like(input_ids, dtype=torch.float32, device=device)
+    for sid in special_ids:
+        token_mask = token_mask * (input_ids != sid).float()
 
     # ── 2. Wrap model with FTM hooks ─────────────────────────────────
     ftm_model = TextFeatureTuning(surrogate, exp_settings, device=str(device))
@@ -99,6 +105,14 @@ def ftm_text_attack(
         max_other_logit = torch.max(other_logits)
         margin = float(exp_settings.get("target_margin", 0.0))
         loss = target_logit - max_other_logit - margin
+
+        # Encourage movement away from original token embeddings to avoid
+        # near-identity projections when constraints are too conservative.
+        change_push_weight = float(exp_settings.get("change_push_weight", 0.0))
+        if change_push_weight > 0.0:
+            emb_delta = (embeddings - original_embeddings).pow(2).mean(dim=-1)
+            change_push = (emb_delta * token_mask).sum() / (token_mask.sum() + 1e-6)
+            loss = loss + change_push_weight * change_push
 
         # ── Collect all parameters for autograd ──────────────────
         params = [embeddings]
