@@ -163,7 +163,7 @@ def ftm_text_attack(
                 pred = torch.argmax(adv_logits, dim=-1).item()
                 adv_target = adv_logits[0, target_label].item()
                 adv_other = adv_logits[0].clone()
-                adv_other[0, target_label] = -1e9
+                adv_other[target_label] = -1e9
                 adv_margin = adv_target - torch.max(adv_other).item()
 
                 if change_ratio <= max_change_ratio and adv_margin > best_score:
@@ -203,7 +203,7 @@ def ftm_text_attack(
         final_pred = torch.argmax(final_logits, dim=-1).item()
         final_target = final_logits[0, target_label].item()
         final_other = final_logits[0].clone()
-        final_other[0, target_label] = -1e9
+        final_other[target_label] = -1e9
         final_margin = final_target - torch.max(final_other).item()
 
         if change_ratio <= max_change_ratio and final_margin > best_score:
