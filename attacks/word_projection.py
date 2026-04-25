@@ -17,6 +17,7 @@ def project_to_nearest_words(
     special_token_ids: set,
     original_ids: torch.Tensor,
     top_k: int = 50,
+    original_swap_gap: float = 0.01,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Project each embedding position to the nearest vocabulary word.
 
@@ -26,8 +27,10 @@ def project_to_nearest_words(
         special_token_ids: set of token IDs to skip (CLS, SEP, PAD, UNK).
         original_ids:     ``[1, seq_len]`` — original token IDs (special tokens
                           are preserved unchanged).
-        top_k:            only consider the *top_k* nearest neighbours
-                          (not used to restrict, kept for potential constraints).
+        top_k:            only consider the *top_k* nearest neighbours.
+        original_swap_gap: if the best neighbour is the original token and the
+                  2nd-best neighbour is close enough (within this cosine
+                  gap), pick the 2nd-best token to reduce snap-back.
 
     Returns:
         ``(new_embeddings [1, seq_len, hidden],
@@ -41,6 +44,8 @@ def project_to_nearest_words(
 
     # Normalise vocab for fast cosine sim  [vocab, hidden]
     vocab_norm = F.normalize(vocab_embeddings, dim=1)
+    vocab_size = vocab_embeddings.size(0)
+    k = max(2, min(int(top_k), vocab_size))
 
     for i in range(seq_len):
         token_id = original_ids[0, i].item()
@@ -58,8 +63,17 @@ def project_to_nearest_words(
         for sid in special_token_ids:
             sims[sid] = -1.0
 
-        # Find nearest word
-        best_id = sims.argmax().item()
+        # Find top-k nearest candidates
+        top_vals, top_ids = torch.topk(sims, k=k)
+        best_id = top_ids[0].item()
+
+        # If projection collapses back to original token, allow a near-tie swap.
+        if best_id == token_id and k > 1:
+            second_id = top_ids[1].item()
+            gap = (top_vals[0] - top_vals[1]).item()
+            if gap <= original_swap_gap:
+                best_id = second_id
+
         new_ids[0, i] = best_id
         new_emb_list.append(vocab_embeddings[best_id].unsqueeze(0))
 

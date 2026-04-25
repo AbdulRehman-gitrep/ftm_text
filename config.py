@@ -22,6 +22,7 @@ exp_configuration = {
         # ── Attack iterations ────────────────────────────────────
         'num_iterations': 300,
         'alpha': 0.01,           # Step size for embedding updates (sign gradient)
+        'target_margin': 0.0,    # Margin term for target-vs-non-target objective
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.01,        # Perturbation scaling factor (Eq. 11)
@@ -42,6 +43,7 @@ exp_configuration = {
         # ── Word projection ──────────────────────────────────────
         'projection_freq': 50,       # Project embeddings to words every N iters
         'top_k_projection': 50,      # Consider top-k nearest words during projection
+        'projection_swap_gap': 0.005,  # Allow near-tie swap away from original token
 
         # ── Semantic constraints ─────────────────────────────────
         'semantic_sim_threshold': 0.8,  # Min cosine similarity (sentence-transformers)
@@ -72,6 +74,7 @@ exp_configuration = {
         # ── Attack iterations ────────────────────────────────────
         'num_iterations': 400,
         'alpha': 0.03,
+        'target_margin': 0.1,
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.05,
@@ -91,6 +94,7 @@ exp_configuration = {
         # ── Word projection ──────────────────────────────────────
         'projection_freq': 100,
         'top_k_projection': 50,
+        'projection_swap_gap': 0.015,
 
         # ── Semantic constraints ─────────────────────────────────
         'semantic_sim_threshold': 0.75,
@@ -121,6 +125,7 @@ exp_configuration = {
         # ── Attack iterations ────────────────────────────────────
         'num_iterations': 500,
         'alpha': 0.05,
+        'target_margin': 0.15,
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.1,
@@ -140,6 +145,7 @@ exp_configuration = {
         # ── Word projection ──────────────────────────────────────
         'projection_freq': 120,
         'top_k_projection': 50,
+        'projection_swap_gap': 0.02,
 
         # ── Semantic constraints ─────────────────────────────────
         'semantic_sim_threshold': 0.7,
@@ -170,6 +176,7 @@ exp_configuration = {
         # ── Attack iterations ────────────────────────────────────
         'num_iterations': 450,
         'alpha': 0.04,
+        'target_margin': 0.12,
 
         # ── FTM core hyperparameters ─────────────────────────────
         'ftm_beta': 0.08,
@@ -189,6 +196,7 @@ exp_configuration = {
         # ── Word projection ──────────────────────────────────────
         'projection_freq': 90,
         'top_k_projection': 50,
+        'projection_swap_gap': 0.018,
 
         # ── Semantic constraints ─────────────────────────────────
         'semantic_sim_threshold': 0.72,

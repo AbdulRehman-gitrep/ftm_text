@@ -15,8 +15,7 @@ Mirrors the image ``ftm_attack()`` function in ``attacks.py``:
 """
 
 import torch
-import torch.nn.functional as F
-from typing import Dict, Tuple, Optional
+from typing import Dict
 
 from attacks.hooks import TextFeatureTuning
 from attacks.word_projection import (
@@ -85,14 +84,21 @@ def ftm_text_attack(
     best_adv_ids = original_ids.clone()
     best_adv_text = text
     attack_success = False
+    best_score = float("-inf")
 
     for t in range(1, num_iter):  # start from 1 (0 was the recording pass)
         # Forward pass (hooks add Δz / mixing)
         outputs = ftm_model.forward_from_embeddings(embeddings, attention_mask)
         logits = outputs.logits  # [1, num_classes]
 
-        # Loss: maximise target-class logit (targeted attack)
-        loss = logits[0, target_label]
+        # Loss: maximise target margin over strongest non-target class.
+        # This is usually stronger than maximising target logit alone.
+        target_logit = logits[0, target_label]
+        other_logits = logits[0].clone()
+        other_logits[target_label] = -1e9
+        max_other_logit = torch.max(other_logits)
+        margin = float(exp_settings.get("target_margin", 0.0))
+        loss = target_logit - max_other_logit - margin
 
         # ── Collect all parameters for autograd ──────────────────
         params = [embeddings]
@@ -141,6 +147,7 @@ def ftm_text_attack(
                     special_ids,
                     original_ids,
                     top_k=exp_settings.get("top_k_projection", 50),
+                    original_swap_gap=float(exp_settings.get("projection_swap_gap", 0.01)),
                 )
                 embeddings = proj_emb.detach().requires_grad_(True)
 
@@ -154,10 +161,17 @@ def ftm_text_attack(
                 adv_inputs = surrogate.tokenize(adv_text)
                 adv_logits = surrogate.model(**adv_inputs).logits
                 pred = torch.argmax(adv_logits, dim=-1).item()
+                adv_target = adv_logits[0, target_label].item()
+                adv_other = adv_logits[0].clone()
+                adv_other[0, target_label] = -1e9
+                adv_margin = adv_target - torch.max(adv_other).item()
 
-                if pred == target_label and change_ratio <= max_change_ratio:
+                if change_ratio <= max_change_ratio and adv_margin > best_score:
+                    best_score = adv_margin
                     best_adv_text = adv_text
                     best_adv_ids = proj_ids.clone()
+
+                if pred == target_label and change_ratio <= max_change_ratio:
                     attack_success = True
 
                 if t % (projection_freq * 2) == 0:
@@ -171,7 +185,12 @@ def ftm_text_attack(
     # ── 4. Final projection & return ─────────────────────────────────
     with torch.no_grad():
         final_emb, final_ids = project_to_nearest_words(
-            embeddings, vocab_embeddings, special_ids, original_ids,
+            embeddings,
+            vocab_embeddings,
+            special_ids,
+            original_ids,
+            top_k=exp_settings.get("top_k_projection", 50),
+            original_swap_gap=float(exp_settings.get("projection_swap_gap", 0.01)),
         )
         final_text = embeddings_to_text(final_ids, surrogate.tokenizer)
         num_changed, num_total, change_ratio = compute_word_changes(
@@ -181,12 +200,19 @@ def ftm_text_attack(
         # Check final prediction
         final_inputs = surrogate.tokenize(final_text)
         final_logits = surrogate.model(**final_inputs).logits
-        surrogate_pred = torch.argmax(final_logits, dim=-1).item()
+        final_pred = torch.argmax(final_logits, dim=-1).item()
+        final_target = final_logits[0, target_label].item()
+        final_other = final_logits[0].clone()
+        final_other[0, target_label] = -1e9
+        final_margin = final_target - torch.max(final_other).item()
 
-        # If the final text is better, use it
-        if surrogate_pred == target_label and change_ratio <= max_change_ratio:
+        if change_ratio <= max_change_ratio and final_margin > best_score:
+            best_score = final_margin
             best_adv_text = final_text
             best_adv_ids = final_ids.clone()
+
+        # If the final text is better, use it
+        if final_pred == target_label and change_ratio <= max_change_ratio:
             attack_success = True
 
     ftm_model.remove_hooks()
@@ -195,6 +221,11 @@ def ftm_text_attack(
     num_changed, _, change_ratio = compute_word_changes(
         original_ids, best_adv_ids, special_ids,
     )
+
+    with torch.no_grad():
+        best_inputs = surrogate.tokenize(best_adv_text)
+        best_logits = surrogate.model(**best_inputs).logits
+        surrogate_pred = torch.argmax(best_logits, dim=-1).item()
 
     return {
         "original_text": text,
