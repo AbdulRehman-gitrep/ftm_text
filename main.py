@@ -31,7 +31,7 @@ from utils.evaluation import (
 
 def main(args):
     # ── Configuration ────────────────────────────────────────────────
-    settings = exp_configuration[args.config_idx]
+    settings = dict(exp_configuration[args.config_idx])
     device = args.device
 
     # Override from CLI
@@ -46,6 +46,7 @@ def main(args):
     print("  TEXT FTM ATTACK")
     print("=" * 60)
     print(f"Device       : {device}")
+    print(f"Config idx   : {args.config_idx}")
     print(f"Surrogate    : {settings['surrogate_model']}")
     print(f"Iterations   : {settings['num_iterations']}")
     print(f"Samples      : {args.num_samples}")
@@ -197,6 +198,7 @@ def parse_args():
     )
     parser.add_argument(
         "--config_idx", type=int, default=1,
+        choices=sorted(exp_configuration.keys()),
         help="Config index from exp_configuration",
     )
     parser.add_argument(
