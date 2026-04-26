@@ -15,6 +15,7 @@ Mirrors the image ``ftm_attack()`` function in ``attacks.py``:
 """
 
 import torch
+import random
 from typing import Dict
 
 from attacks.hooks import TextFeatureTuning
@@ -181,6 +182,169 @@ def hotflip_ftm_attack(
         "adversarial_text": best_adv_text,
         "original_ids": original_ids,
         "adversarial_ids": best_adv_ids,
+        "true_label": true_label,
+        "target_label": target_label,
+        "surrogate_pred": final_pred,
+        "attack_success": attack_success,
+        "num_changed": num_changed,
+        "change_ratio": change_ratio,
+    }
+
+
+def genetic_ftm_attack(
+    surrogate,
+    text: str,
+    true_label: int,
+    target_label: int,
+    exp_settings: dict,
+    device: str = "cpu",
+) -> Dict:
+    """Strategy C: Genetic search with FTM-guided mutation."""
+    device = torch.device(device)
+    population_size = int(exp_settings.get("genetic_population_size", 20))
+    num_generations = int(exp_settings.get("genetic_num_generations", 50))
+    mutation_words = int(exp_settings.get("genetic_mutation_words", 3))
+    top_k_words = int(exp_settings.get("genetic_top_k_words", 50))
+    max_change_ratio = exp_settings["max_word_change_ratio"]
+
+    inputs = surrogate.tokenize(text)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+    original_ids = input_ids.clone()
+    special_ids = get_special_token_ids(surrogate.tokenizer)
+
+    embedding_layer = surrogate.get_embedding_layer()
+    vocab_embeddings = surrogate.get_vocab_embeddings().detach()
+
+    ftm_model = TextFeatureTuning(surrogate, exp_settings, device=str(device))
+    with torch.no_grad():
+        clean_embeddings = embedding_layer(original_ids).detach()
+        ftm_model.start_feature_record()
+        ftm_model.forward_from_embeddings(clean_embeddings, attention_mask)
+        ftm_model.end_feature_record()
+
+    def evaluate_candidate(token_ids: torch.Tensor):
+        with torch.no_grad():
+            embeds = embedding_layer(token_ids)
+            logits = ftm_model.forward_from_embeddings(embeds, attention_mask).logits[0]
+            pred = torch.argmax(logits).item()
+            target_score = logits[target_label].item()
+            other = logits.clone()
+            other[target_label] = -1e9
+            margin_score = target_score - torch.max(other).item()
+            _, _, ratio = compute_word_changes(original_ids, token_ids, special_ids)
+        return pred, margin_score, ratio
+
+    def crossover(parent_a: torch.Tensor, parent_b: torch.Tensor):
+        child = parent_a.clone()
+        seq_len = child.size(1)
+        for pos in range(seq_len):
+            tok = child[0, pos].item()
+            if tok in special_ids or attention_mask[0, pos].item() == 0:
+                continue
+            if random.random() < 0.5:
+                child[0, pos] = parent_b[0, pos]
+        return child
+
+    def mutate(child_ids: torch.Tensor):
+        mutable = child_ids.clone()
+        embeds = embedding_layer(mutable).detach().clone().requires_grad_(True)
+        logits = ftm_model.forward_from_embeddings(embeds, attention_mask).logits[0]
+        target = logits[target_label]
+        other = logits.clone()
+        other[target_label] = -1e9
+        loss = target - torch.max(other)
+        grad = torch.autograd.grad(loss, embeds, retain_graph=False, create_graph=False)[0]
+
+        grad_norm = grad.norm(dim=-1)[0]
+        positions = []
+        for pos in range(mutable.size(1)):
+            tok = mutable[0, pos].item()
+            if tok in special_ids or attention_mask[0, pos].item() == 0:
+                continue
+            positions.append((pos, grad_norm[pos].item()))
+        positions.sort(key=lambda x: x[1], reverse=True)
+        chosen = [p for p, _ in positions[:max(1, mutation_words)]]
+
+        with torch.no_grad():
+            for pos in chosen:
+                cur_id = mutable[0, pos].item()
+                scores = torch.mv(vocab_embeddings, grad[0, pos])
+                for sid in special_ids:
+                    scores[sid] = -1e9
+                scores[cur_id] = -1e9
+
+                k = min(max(2, top_k_words), scores.numel())
+                cand_ids = torch.topk(scores, k=k).indices.tolist()
+                for cand in cand_ids:
+                    tmp = mutable.clone()
+                    tmp[0, pos] = cand
+                    _, _, ratio = compute_word_changes(original_ids, tmp, special_ids)
+                    if ratio <= max_change_ratio:
+                        mutable[0, pos] = cand
+                        break
+        return mutable
+
+    population = [original_ids.clone() for _ in range(population_size)]
+    best_ids = original_ids.clone()
+    best_text = text
+    best_score = float("-inf")
+    attack_success = False
+
+    for gen in range(1, num_generations + 1):
+        scored = []
+        for cand in population:
+            pred, score, ratio = evaluate_candidate(cand)
+            # Penalize candidates that violate change budget.
+            fitness = score if ratio <= max_change_ratio else score - 10.0
+            scored.append((cand.clone(), pred, score, ratio, fitness))
+
+            if ratio <= max_change_ratio and score > best_score:
+                best_score = score
+                best_ids = cand.clone()
+                best_text = embeddings_to_text(best_ids, surrogate.tokenizer)
+
+            if pred == target_label and ratio <= max_change_ratio:
+                attack_success = True
+                best_ids = cand.clone()
+                best_text = embeddings_to_text(best_ids, surrogate.tokenizer)
+                break
+
+        if attack_success:
+            break
+
+        scored.sort(key=lambda x: x[4], reverse=True)
+        survivors = [x[0] for x in scored[: max(2, population_size // 2)]]
+
+        if gen % 10 == 0:
+            top = scored[0]
+            print(
+                f"  gen {gen:>3d}/{num_generations} | "
+                f"pred={top[1]} target={target_label} | "
+                f"changed={top[3]:.1%} | margin={top[2]:.3f}"
+            )
+
+        new_population = [s.clone() for s in survivors]
+        while len(new_population) < population_size:
+            p1, p2 = random.sample(survivors, 2)
+            child = crossover(p1, p2)
+            child = mutate(child)
+            new_population.append(child)
+        population = new_population
+
+    ftm_model.remove_hooks()
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+    with torch.no_grad():
+        final_inputs = surrogate.tokenize(best_text)
+        final_pred = torch.argmax(surrogate.model(**final_inputs).logits, dim=-1).item()
+
+    num_changed, _, change_ratio = compute_word_changes(original_ids, best_ids, special_ids)
+    return {
+        "original_text": text,
+        "adversarial_text": best_text,
+        "original_ids": original_ids,
+        "adversarial_ids": best_ids,
         "true_label": true_label,
         "target_label": target_label,
         "surrogate_pred": final_pred,

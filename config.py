@@ -391,4 +391,64 @@ exp_configuration = {
 
         'comment': 'Strategy A: HotFlip-style discrete token substitution with FTM hooks',
     },
+
+    8: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+        'attack_method': 'genetic_ftm',
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── General attack placeholders ──────────────────────────
+        'num_iterations': 300,
+        'alpha': 0.0,
+        'target_margin': 0.1,
+        'change_push_weight': 0.0,
+
+        # ── Strategy C genetic params ────────────────────────────
+        'genetic_population_size': 20,
+        'genetic_num_generations': 50,
+        'genetic_mutation_words': 3,
+        'genetic_top_k_words': 50,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.08,
+        'mix_prob': 0.3,
+        'mix_upper_bound_feature': 0.6,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Projection placeholders (unused in genetic mode) ────
+        'projection_freq': 0,
+        'project_intermediate': False,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.01,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.65,
+        'max_word_change_ratio': 0.6,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Strategy C: Genetic algorithm + FTM-guided mutation',
+    },
 }

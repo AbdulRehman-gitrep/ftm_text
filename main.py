@@ -19,7 +19,7 @@ import numpy as np
 from config import exp_configuration
 from models.surrogate_model import SurrogateModel
 from models.black_box_models import load_black_box_models
-from attacks.ftm_text import ftm_text_attack, hotflip_ftm_attack
+from attacks.ftm_text import ftm_text_attack, hotflip_ftm_attack, genetic_ftm_attack
 from utils.data_loader import load_imdb_dataset, load_custom_csv
 from utils.evaluation import (
     compute_asr,
@@ -79,6 +79,7 @@ def main(args):
     originals = []
     adversarials = []
     target_labels_list = []
+    true_labels_list = []
     surrogate_successes = 0
 
     for i, (text, true_label, target_label) in enumerate(samples):
@@ -91,6 +92,15 @@ def main(args):
         attack_method = settings.get("attack_method", "continuous_ftm")
         if attack_method == "hotflip_ftm":
             result = hotflip_ftm_attack(
+                surrogate=surrogate,
+                text=text,
+                true_label=true_label,
+                target_label=target_label,
+                exp_settings=settings,
+                device=device,
+            )
+        elif attack_method == "genetic_ftm":
+            result = genetic_ftm_attack(
                 surrogate=surrogate,
                 text=text,
                 true_label=true_label,
@@ -112,6 +122,7 @@ def main(args):
         originals.append(text)
         adversarials.append(result["adversarial_text"])
         target_labels_list.append(target_label)
+        true_labels_list.append(true_label)
 
         if result["attack_success"]:
             surrogate_successes += 1
@@ -137,7 +148,18 @@ def main(args):
 
     # ── Surrogate ASR ────────────────────────────────────────────────
     surr_asr = surrogate_successes / len(samples) * 100
-    print(f"\n  Surrogate ASR: {surr_asr:.1f}% ({surrogate_successes}/{len(samples)})")
+    surrogate_clean_preds = [surrogate.predict(t) for t in originals]
+    surrogate_adv_preds = [r["surrogate_pred"] for r in results]
+    surrogate_clean_acc = np.mean([
+        int(p == y) for p, y in zip(surrogate_clean_preds, true_labels_list)
+    ]) * 100
+    surrogate_adv_acc = np.mean([
+        int(p == y) for p, y in zip(surrogate_adv_preds, true_labels_list)
+    ]) * 100
+    print(
+        f"\n  SURROGATE | clean acc {surrogate_clean_acc:.1f}% | "
+        f"adversarial acc {surrogate_adv_acc:.1f}% | success {surr_asr:.1f}%"
+    )
 
     # ── Black-box evaluation ─────────────────────────────────────────
     if args.eval:
@@ -148,8 +170,27 @@ def main(args):
         bbm_list = load_black_box_models(settings["target_model_names"], device=device)
 
         asr_results = compute_asr(adversarials, target_labels_list, bbm_list)
-        for name, er in asr_results.items():
-            print(f"  {er}")
+        black_box_metrics = {}
+        for model in bbm_list:
+            name = model.model_name
+            er = asr_results[name]
+            clean_preds = model.predict_batch(originals)
+            adv_preds = model.predict_batch(adversarials)
+            clean_acc = np.mean([
+                int(p == y) for p, y in zip(clean_preds, true_labels_list)
+            ]) * 100
+            adv_acc = np.mean([
+                int(p == y) for p, y in zip(adv_preds, true_labels_list)
+            ]) * 100
+            black_box_metrics[name] = {
+                "clean_acc": float(clean_acc),
+                "adversarial_acc": float(adv_acc),
+                "success": float(er.success_rate),
+            }
+            print(
+                f"  {name} | clean acc {clean_acc:.1f}% | "
+                f"adversarial acc {adv_acc:.1f}% | success {er.success_rate:.1f}%"
+            )
 
         avg_asr = np.mean([er.success_rate for er in asr_results.values()])
         print(f"\n  Average black-box ASR: {avg_asr:.1f}%")
@@ -175,6 +216,8 @@ def main(args):
         "config": {k: v for k, v in settings.items() if not callable(v)},
         "num_samples": len(samples),
         "surrogate_asr": surr_asr,
+        "surrogate_clean_acc": float(surrogate_clean_acc),
+        "surrogate_adversarial_acc": float(surrogate_adv_acc),
         "avg_semantic_similarity": float(avg_sim),
         "above_sim_threshold": above_threshold,
     }
@@ -182,6 +225,7 @@ def main(args):
         summary["black_box_asr"] = {
             name: er.success_rate for name, er in asr_results.items()
         }
+        summary["black_box_metrics"] = black_box_metrics
         summary["avg_black_box_asr"] = float(avg_asr)
 
     summary_path = os.path.join(save_dir, "results_summary.json")
