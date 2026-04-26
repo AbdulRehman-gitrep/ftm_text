@@ -451,4 +451,240 @@ exp_configuration = {
 
         'comment': 'Strategy C: Genetic algorithm + FTM-guided mutation',
     },
+
+    9: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+        'attack_method': 'hotflip_ftm',
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── Attack iterations ────────────────────────────────────
+        'num_iterations': 300,
+        'alpha': 0.0,
+        'target_margin': 0.05,
+        'change_push_weight': 0.0,
+
+        # ── Strategy A specific params ───────────────────────────
+        'hotflip_num_iterations': 180,
+        'hotflip_top_k_words': 200,
+        'hotflip_words_per_iter': 3,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.08,
+        'mix_prob': 0.3,
+        'mix_upper_bound_feature': 0.6,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Projection placeholders (unused in hotflip mode) ────
+        'projection_freq': 0,
+        'project_intermediate': False,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.01,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.65,
+        'max_word_change_ratio': 0.6,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Strategy A transfer variant: fewer iters + broader candidate set',
+    },
+
+    10: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+        'attack_method': 'hotflip_ftm',
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── Attack iterations ────────────────────────────────────
+        'num_iterations': 300,
+        'alpha': 0.0,
+        'target_margin': 0.05,
+        'change_push_weight': 0.0,
+
+        # ── Strategy A specific params ───────────────────────────
+        'hotflip_num_iterations': 250,
+        'hotflip_top_k_words': 200,
+        'hotflip_words_per_iter': 3,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.08,
+        'mix_prob': 0.3,
+        'mix_upper_bound_feature': 0.6,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Projection placeholders (unused in hotflip mode) ────
+        'projection_freq': 0,
+        'project_intermediate': False,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.01,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.65,
+        'max_word_change_ratio': 0.6,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Strategy A transfer variant: baseline iters + broader candidate set',
+    },
+
+    11: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+        'attack_method': 'hotflip_ftm',
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── Attack iterations ────────────────────────────────────
+        'num_iterations': 300,
+        'alpha': 0.0,
+        'target_margin': 0.05,
+        'change_push_weight': 0.0,
+
+        # ── Strategy A specific params ───────────────────────────
+        'hotflip_num_iterations': 250,
+        'hotflip_top_k_words': 100,
+        'hotflip_words_per_iter': 2,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.08,
+        'mix_prob': 0.3,
+        'mix_upper_bound_feature': 0.6,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Projection placeholders (unused in hotflip mode) ────
+        'projection_freq': 0,
+        'project_intermediate': False,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.01,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.65,
+        'max_word_change_ratio': 0.7,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Strategy A transfer variant: conservative per-step changes + larger edit budget',
+    },
+
+    12: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+        'attack_method': 'hotflip_ftm',
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── Attack iterations ────────────────────────────────────
+        'num_iterations': 300,
+        'alpha': 0.0,
+        'target_margin': 0.05,
+        'change_push_weight': 0.0,
+
+        # ── Strategy A specific params ───────────────────────────
+        'hotflip_num_iterations': 320,
+        'hotflip_top_k_words': 200,
+        'hotflip_words_per_iter': 2,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.08,
+        'mix_prob': 0.3,
+        'mix_upper_bound_feature': 0.6,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Projection placeholders (unused in hotflip mode) ────
+        'projection_freq': 0,
+        'project_intermediate': False,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.01,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.65,
+        'max_word_change_ratio': 0.7,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Strategy A transfer variant: more iters with wide candidates and larger edit budget',
+    },
 }
