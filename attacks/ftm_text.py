@@ -26,6 +26,170 @@ from attacks.word_projection import (
 )
 
 
+def hotflip_ftm_attack(
+    surrogate,
+    text: str,
+    true_label: int,
+    target_label: int,
+    exp_settings: dict,
+    device: str = "cpu",
+) -> Dict:
+    """Strategy A: HotFlip-style discrete token substitution with FTM hooks.
+
+    This attack directly mutates token IDs using gradient-guided substitutions,
+    avoiding repeated embedding-to-token projections during optimization.
+    """
+    device = torch.device(device)
+    max_change_ratio = exp_settings["max_word_change_ratio"]
+    num_iter = int(exp_settings.get("hotflip_num_iterations", exp_settings["num_iterations"]))
+    top_k_words = int(exp_settings.get("hotflip_top_k_words", 100))
+    words_per_iter = int(exp_settings.get("hotflip_words_per_iter", 3))
+    margin = float(exp_settings.get("target_margin", 0.0))
+
+    inputs = surrogate.tokenize(text)
+    input_ids = inputs["input_ids"]
+    attention_mask = inputs["attention_mask"]
+    original_ids = input_ids.clone()
+    tokens = input_ids.clone()
+
+    special_ids = get_special_token_ids(surrogate.tokenizer)
+    embedding_layer = surrogate.get_embedding_layer()
+    vocab_embeddings = surrogate.get_vocab_embeddings().detach()
+
+    # Compute change budget on non-special tokens.
+    _, total_non_special, _ = compute_word_changes(original_ids, original_ids, special_ids)
+    max_changes = max(1, int(total_non_special * max_change_ratio)) if total_non_special > 0 else 0
+
+    ftm_model = TextFeatureTuning(surrogate, exp_settings, device=str(device))
+
+    # Record clean features once from original text.
+    with torch.no_grad():
+        clean_embeddings = embedding_layer(original_ids).detach()
+        ftm_model.start_feature_record()
+        ftm_model.forward_from_embeddings(clean_embeddings, attention_mask)
+        ftm_model.end_feature_record()
+
+    best_adv_ids = tokens.clone()
+    best_adv_text = embeddings_to_text(tokens, surrogate.tokenizer)
+    best_score = float("-inf")
+    attack_success = False
+
+    for t in range(1, num_iter + 1):
+        current_embeddings = embedding_layer(tokens).detach().clone().requires_grad_(True)
+        outputs = ftm_model.forward_from_embeddings(current_embeddings, attention_mask)
+        logits = outputs.logits[0]
+
+        target_logit = logits[target_label]
+        other_logits = logits.clone()
+        other_logits[target_label] = -1e9
+        max_other_logit = torch.max(other_logits)
+        loss = target_logit - max_other_logit - margin
+
+        grad_embeddings = torch.autograd.grad(
+            loss,
+            current_embeddings,
+            retain_graph=False,
+            create_graph=False,
+            allow_unused=True,
+        )[0]
+
+        if grad_embeddings is None:
+            continue
+
+        grad_norm = grad_embeddings.norm(dim=-1)[0]
+        seq_len = tokens.size(1)
+
+        # Rank mutable positions by gradient norm.
+        mutable_positions = []
+        for pos in range(seq_len):
+            token_id = tokens[0, pos].item()
+            if token_id in special_ids:
+                continue
+            if attention_mask[0, pos].item() == 0:
+                continue
+            mutable_positions.append((pos, grad_norm[pos].item()))
+
+        mutable_positions.sort(key=lambda x: x[1], reverse=True)
+        selected_positions = [p for p, _ in mutable_positions[:max(1, words_per_iter)]]
+
+        with torch.no_grad():
+            for pos in selected_positions:
+                current_id = tokens[0, pos].item()
+                grad_vec = grad_embeddings[0, pos]
+
+                # First-order approximation score for each candidate token.
+                candidate_scores = torch.mv(vocab_embeddings, grad_vec)
+
+                for sid in special_ids:
+                    candidate_scores[sid] = -1e9
+                candidate_scores[current_id] = -1e9
+
+                k = min(max(2, top_k_words), candidate_scores.numel())
+                top_ids = torch.topk(candidate_scores, k=k).indices
+
+                accepted_id = None
+                for cand_id in top_ids.tolist():
+                    tmp_tokens = tokens.clone()
+                    tmp_tokens[0, pos] = cand_id
+                    changed, _, _ = compute_word_changes(original_ids, tmp_tokens, special_ids)
+                    if changed <= max_changes:
+                        accepted_id = cand_id
+                        break
+
+                if accepted_id is not None:
+                    tokens[0, pos] = accepted_id
+
+        with torch.no_grad():
+            eval_logits = surrogate.model(input_ids=tokens, attention_mask=attention_mask).logits[0]
+            pred = torch.argmax(eval_logits).item()
+            eval_target = eval_logits[target_label].item()
+            eval_other = eval_logits.clone()
+            eval_other[target_label] = -1e9
+            eval_margin = eval_target - torch.max(eval_other).item()
+            _, _, change_ratio = compute_word_changes(original_ids, tokens, special_ids)
+
+            if change_ratio <= max_change_ratio and eval_margin > best_score:
+                best_score = eval_margin
+                best_adv_ids = tokens.clone()
+                best_adv_text = embeddings_to_text(best_adv_ids, surrogate.tokenizer)
+
+            if pred == target_label and change_ratio <= max_change_ratio:
+                attack_success = True
+                best_adv_ids = tokens.clone()
+                best_adv_text = embeddings_to_text(best_adv_ids, surrogate.tokenizer)
+                break
+
+            if t % 25 == 0:
+                print(
+                    f"  iter {t:>4d}/{num_iter} | "
+                    f"pred={pred} target={target_label} | "
+                    f"changed={change_ratio:.1%} | "
+                    f"margin={eval_margin:.3f}"
+                )
+
+    ftm_model.remove_hooks()
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+    with torch.no_grad():
+        final_inputs = surrogate.tokenize(best_adv_text)
+        final_pred = torch.argmax(surrogate.model(**final_inputs).logits, dim=-1).item()
+
+    num_changed, _, change_ratio = compute_word_changes(original_ids, best_adv_ids, special_ids)
+
+    return {
+        "original_text": text,
+        "adversarial_text": best_adv_text,
+        "original_ids": original_ids,
+        "adversarial_ids": best_adv_ids,
+        "true_label": true_label,
+        "target_label": target_label,
+        "surrogate_pred": final_pred,
+        "attack_success": attack_success,
+        "num_changed": num_changed,
+        "change_ratio": change_ratio,
+    }
+
+
 def ftm_text_attack(
     surrogate,                 # SurrogateModel instance
     text: str,

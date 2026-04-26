@@ -19,7 +19,7 @@ import numpy as np
 from config import exp_configuration
 from models.surrogate_model import SurrogateModel
 from models.black_box_models import load_black_box_models
-from attacks.ftm_text import ftm_text_attack
+from attacks.ftm_text import ftm_text_attack, hotflip_ftm_attack
 from utils.data_loader import load_imdb_dataset, load_custom_csv
 from utils.evaluation import (
     compute_asr,
@@ -47,6 +47,7 @@ def main(args):
     print("=" * 60)
     print(f"Device       : {device}")
     print(f"Config idx   : {args.config_idx}")
+    print(f"Attack method: {settings.get('attack_method', 'continuous_ftm')}")
     print(f"Surrogate    : {settings['surrogate_model']}")
     print(f"Iterations   : {settings['num_iterations']}")
     print(f"Samples      : {args.num_samples}")
@@ -87,14 +88,25 @@ def main(args):
         print(f"  Target label: {target_label} ({surrogate.LABEL_MAP.get(target_label, '?')})")
         print(f"  Text: {text[:100]}{'...' if len(text) > 100 else ''}")
 
-        result = ftm_text_attack(
-            surrogate=surrogate,
-            text=text,
-            true_label=true_label,
-            target_label=target_label,
-            exp_settings=settings,
-            device=device,
-        )
+        attack_method = settings.get("attack_method", "continuous_ftm")
+        if attack_method == "hotflip_ftm":
+            result = hotflip_ftm_attack(
+                surrogate=surrogate,
+                text=text,
+                true_label=true_label,
+                target_label=target_label,
+                exp_settings=settings,
+                device=device,
+            )
+        else:
+            result = ftm_text_attack(
+                surrogate=surrogate,
+                text=text,
+                true_label=true_label,
+                target_label=target_label,
+                exp_settings=settings,
+                device=device,
+            )
 
         results.append(result)
         originals.append(text)
