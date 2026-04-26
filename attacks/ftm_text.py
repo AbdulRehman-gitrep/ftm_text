@@ -56,6 +56,14 @@ def ftm_text_attack(
     alpha = exp_settings["alpha"]
     projection_freq = exp_settings["projection_freq"]
     max_change_ratio = exp_settings["max_word_change_ratio"]
+    use_momentum = bool(exp_settings.get("use_momentum", False))
+    momentum_mu = float(exp_settings.get("momentum_mu", 0.9))
+    adaptive_step = bool(exp_settings.get("adaptive_step", False))
+    adaptive_check_freq = int(exp_settings.get("adaptive_check_freq", 50))
+    adaptive_min_margin_gain = float(exp_settings.get("adaptive_min_margin_gain", 0.02))
+    adaptive_step_scale = float(exp_settings.get("adaptive_step_scale", 1.5))
+    alpha_max = float(exp_settings.get("alpha_max", 0.5))
+    project_intermediate = bool(exp_settings.get("project_intermediate", True))
 
     # ── 1. Tokenize ──────────────────────────────────────────────────
     inputs = surrogate.tokenize(text)
@@ -87,6 +95,9 @@ def ftm_text_attack(
 
     # ── 3. Iterative attack ──────────────────────────────────────────
     embeddings = embeddings.detach().clone().requires_grad_(True)
+    momentum = torch.zeros_like(embeddings)
+    step_alpha = alpha
+    last_margin_check = None
     best_adv_ids = original_ids.clone()
     best_adv_text = text
     attack_success = False
@@ -105,6 +116,7 @@ def ftm_text_attack(
         max_other_logit = torch.max(other_logits)
         margin = float(exp_settings.get("target_margin", 0.0))
         loss = target_logit - max_other_logit - margin
+        current_margin_score = (target_logit - max_other_logit).item()
 
         # Encourage movement away from original token embeddings to avoid
         # near-identity projections when constraints are too conservative.
@@ -133,8 +145,23 @@ def ftm_text_attack(
         # ── Update embeddings (sign-gradient ascent) ─────────────
         with torch.no_grad():
             if grad_emb is not None:
-                embeddings = embeddings + alpha * grad_emb.sign()
+                if use_momentum:
+                    normalized_grad = grad_emb / (grad_emb.abs().mean() + 1e-8)
+                    momentum = momentum_mu * momentum + normalized_grad
+                    update_direction = momentum.sign()
+                else:
+                    update_direction = grad_emb.sign()
+
+                embeddings = embeddings + step_alpha * update_direction
             embeddings = embeddings.detach().requires_grad_(True)
+
+        # Optional adaptive step-size schedule when margin is stuck.
+        if adaptive_step and (t % adaptive_check_freq == 0):
+            if last_margin_check is not None:
+                margin_gain = current_margin_score - last_margin_check
+                if margin_gain < adaptive_min_margin_gain:
+                    step_alpha = min(step_alpha * adaptive_step_scale, alpha_max)
+            last_margin_check = current_margin_score
 
         # ── Update Δz for each hooked layer ──────────────────────
         grad_idx = 1
@@ -153,7 +180,16 @@ def ftm_text_attack(
             grad_idx += 1
 
         # ── Periodic word projection ─────────────────────────────
-        if t % projection_freq == 0 or t == num_iter - 1:
+        should_project = (
+            t == num_iter - 1
+            or (
+                project_intermediate
+                and projection_freq is not None
+                and projection_freq > 0
+                and (t % projection_freq == 0)
+            )
+        )
+        if should_project:
             with torch.no_grad():
                 proj_emb, proj_ids = project_to_nearest_words(
                     embeddings,

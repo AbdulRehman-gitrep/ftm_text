@@ -264,4 +264,66 @@ exp_configuration = {
 
         'comment': 'Exploratory high-strength settings for improved targeted/transfer ASR',
     },
+
+    6: {
+        # ── Dataset ──────────────────────────────────────────────
+        'dataset': 'IMDB',
+        'targeted': True,
+
+        # ── Surrogate model ──────────────────────────────────────
+        'surrogate_model': 'distilbert-base-uncased-finetuned-sst-2-english',
+
+        # ── Black-box target models for transferability eval ─────
+        'target_model_names': [
+            'textattack/bert-base-uncased-imdb',
+            'textattack/roberta-base-imdb',
+            'textattack/xlnet-base-cased-imdb',
+        ],
+
+        # ── Attack iterations ────────────────────────────────────
+        'num_iterations': 550,
+        'alpha': 0.08,
+        'target_margin': 0.25,
+        'change_push_weight': 0.2,
+
+        # ── FTM core hyperparameters ─────────────────────────────
+        'ftm_beta': 0.15,
+        'mix_prob': 0.4,
+        'mix_upper_bound_feature': 0.4,
+        'mix_lower_bound_feature': 0.0,
+
+        # ── Transformer layer targeting ──────────────────────────
+        'target_layers': [1, 2, 3, 4, 5],
+
+        # ── Feature mixing config ────────────────────────────────
+        'mixed_image_type_feature': 'C',
+        'shuffle_image_feature': 'None',
+        'blending_mode_feature': 'M',
+        'channelwise': False,
+
+        # ── Word projection ──────────────────────────────────────
+        'projection_freq': 200,
+        'project_intermediate': False,
+        'top_k_projection': 50,
+        'projection_swap_gap': 0.04,
+
+        # ── Optimizer behaviour ──────────────────────────────────
+        'use_momentum': True,
+        'momentum_mu': 0.9,
+        'adaptive_step': True,
+        'adaptive_check_freq': 50,
+        'adaptive_min_margin_gain': 0.02,
+        'adaptive_step_scale': 1.5,
+        'alpha_max': 0.5,
+
+        # ── Semantic constraints ─────────────────────────────────
+        'semantic_sim_threshold': 0.6,
+        'max_word_change_ratio': 0.65,
+
+        # ── Evaluation ───────────────────────────────────────────
+        'num_samples': 100,
+        'seed': 42,
+
+        'comment': 'Nuclear continuous mode: momentum + adaptive step + final-only projection',
+    },
 }
